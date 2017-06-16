@@ -1,4 +1,4 @@
-#!./env/bin/python
+#!./venv/bin/python
 
 import logging
 
@@ -7,9 +7,9 @@ from datetime import timedelta
 
 from trello import TrelloApi
 
-
 TRELLO_APP_KEY = 'TRELLO_APP_KEY'
 TRELLO_TOKEN = 'TRELLO_TOKEN'
+
 DELAY_LABEL = 'DELAY_LABEL'
 
 
@@ -22,8 +22,8 @@ def hide_delayed_cards(trello):
         if card['due'] is None:
             continue
 
-        current_time = datetime.now()
-        card_due = datetime.strptime(card['due'], '%Y-%m-%dT%H:%M:%S.%fZ') + timedelta(hours=1)
+        current_time = datetime.utcnow()
+        card_due = datetime.strptime(card['due'], '%Y-%m-%dT%H:%M:%S.%fZ')
         if current_time > card_due:
             continue
 
@@ -41,8 +41,8 @@ def show_delayed_cards(trello):
         if card['due'] is None:
             continue
 
-        current_time = datetime.now()
-        card_due = datetime.strptime(card['due'], '%Y-%m-%dT%H:%M:%S.%fZ') + timedelta(hours=1)
+        current_time = datetime.utcnow()
+        card_due = datetime.strptime(card['due'], '%Y-%m-%dT%H:%M:%S.%fZ')
         if current_time < card_due:
             continue
 
