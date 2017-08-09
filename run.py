@@ -1,5 +1,6 @@
 #!./venv/bin/python
 
+import re
 import logging
 
 from datetime import datetime
@@ -9,12 +10,32 @@ from trello import TrelloApi
 
 TRELLO_APP_KEY = 'TRELLO_APP_KEY'
 TRELLO_TOKEN = 'TRELLO_TOKEN'
+TRELLO_BOARD = 'TRELLO_BOARD'
 
 DELAY_LABEL = 'DELAY_LABEL'
 
 
+def handle_cards_with_delay_sign(trello):
+    p = re.compile('\$\d*')
+
+    cards = trello.boards.get_card(TRELLO_BOARD, filter='open', fields='idLabels,name,due')
+    for card in cards:
+        res = p.findall(card['name'])
+        if not res:
+            continue
+
+        delay = int(res[-1][1:]) if len(res[-1]) > 1 else 1
+
+        current_time = datetime.utcnow() + timedelta(days=delay)
+        card['due'] = datetime.strftime(current_time, '%Y-%m-%dT%H:%M:%S.%fZ')
+        card['idLabels'].append(DELAY_LABEL)
+        card['name'] = re.sub(p, "", card['name'])
+
+        trello.cards.update(card['id'], idLabels=card['idLabels'], name=card['name'], due=card['due'])
+
+
 def hide_delayed_cards(trello):
-    cards = trello.boards.get_card('vTWNRG2x', filter='open', fields='idLabels,name,due')
+    cards = trello.boards.get_card(TRELLO_BOARD, filter='open', fields='idLabels,name,due')
     for card in cards:
         if DELAY_LABEL not in card['idLabels']:
             continue
@@ -33,7 +54,7 @@ def hide_delayed_cards(trello):
 
 
 def show_delayed_cards(trello):
-    cards = trello.boards.get_card('vTWNRG2x', filter='closed', fields='idLabels,name,due')
+    cards = trello.boards.get_card(TRELLO_BOARD, filter='closed', fields='idLabels,name,due')
     for card in cards:
         if DELAY_LABEL not in card['idLabels']:
             continue
@@ -58,6 +79,8 @@ if __name__ == "__main__":
     logging.info('[%s]: running Trello card delayer', datetime.now())
 
     trello = TrelloApi(TRELLO_APP_KEY, TRELLO_TOKEN)
+
+    handle_cards_with_delay_sign(trello)
 
     hide_delayed_cards(trello)
     show_delayed_cards(trello)
