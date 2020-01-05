@@ -1,2 +1,5 @@
 __venv__
 logging.log
+
+.program_lock
+.queue_lock

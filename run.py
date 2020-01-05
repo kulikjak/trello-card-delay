@@ -1,5 +1,9 @@
-import re
+import fcntl
+import json
 import logging
+import re
+import os
+import sys
 
 from datetime import time
 from datetime import datetime
@@ -7,121 +11,183 @@ from datetime import timedelta
 
 from trello import TrelloApi
 
-# Trello communication API_KEY and TOKEN
-TRELLO_APP_KEY = 'TRELLO_APP_KEY'
-TRELLO_TOKEN = 'TRELLO_TOKEN'
 
-# Id of Trello board
-TRELLO_BOARD = 'TRELLO_BOARD'
-# List of all auto snooze lists
-TRELLO_SNOOZE_LISTS = ['TRELLO_SNOOZE_LISTS']
+TRELLO_APP_KEY = '...'
+TRELLO_TOKEN = '...'
+TRELLO_BOARD = '...'
 
-# Id of label which is used as snooze mark
-SNOOZE_LABEL = 'SNOOZE_LABEL'
+LABEL_TOMORROW = '...'
+LABEL_SNOOZE = '...'
+LABEL_IMPORTANT = '...'
 
+PROGRESS_LABELS = [LABEL_SNOOZE, LABEL_TOMORROW]
 
-def handle_dollar_sign(trello):
-    """ Checks for cards with dollar sign and uses following number as
-    an indication of how long card should snoozed (in days). If no dollar sign
-    is present, card is snoozed for one day. Function only adds snooze tag and
-    due date - card is archived in later function.
-    """
-    p = re.compile('\$\d*')
-
-    cards = trello.boards.get_card(
-        TRELLO_BOARD, filter='open', fields='idLabels,name,due')
-    for card in cards:
-        res = p.findall(card['name'])
-        if not res:
-            continue
-
-        delay = int(res[-1][1:]) if len(res[-1]) > 1 else 1
-
-        current_time = datetime.utcnow() + timedelta(days=delay)
-        card['due'] = datetime.strftime(current_time, '%Y-%m-%dT%H:%M:%S.%fZ')
-        card['idLabels'].append(SNOOZE_LABEL)
-        card['name'] = re.sub(p, "", card['name'])
-
-        trello.cards.update(
-            card['id'],
-            idLabels=card['idLabels'],
-            name=card['name'],
-            due=card['due'])
+LIST_TOMORROW = '...'
 
 
-def unarchive_auto_list_cards(trello):
-    """ Restore all cards on auto snooze lists. This is done every day during the night.
-    """
+def integrity_check(card):
+    # check that delayed (archived) cards do have a due date
+    if card['closed'] and LABEL_SNOOZE in card['idLabels'] and not card['due']:
+        return False, "Card does have delay label without any date set"
 
-    now = datetime.utcnow()
-    now_time = now.time()
+    return True, None
 
-    if not time(3, 30) <= now_time <= time(4, 30):
+
+def handle_dollar_snoozing(trello, card):
+    pattern = re.compile(r"\$\d*")
+
+    # skip irelevant cards and find all dollars
+    match = re.findall(pattern, card['name'])
+    if not match:
         return
 
-    for tlist in TRELLO_SNOOZE_LISTS:
-        cards = trello.lists.get_card(tlist, filter='closed')
-        for card in cards:
-            trello.cards.update_closed(card['id'], 'false')
-            logging.info('[%s]: Auto card restored: %s', datetime.now(),
-                         card['name'])
+    # get the last $x value
+    substr = match[-1].lstrip("$")
+    delay = 1 if not substr else int(substr)
+    delay_time = datetime.utcnow() + timedelta(days=delay)
+
+    card['name'] = re.sub(pattern, "", card['name'])
+    card['due'] = datetime.strftime(delay_time, '%Y-%m-%dT%H:%M:%S.%fZ')
+    card['idLabels'] = card['idLabels'] + [LABEL_SNOOZE]
+
+    trello.cards.update(card['id'], name=card['name'], due=card['due'], idLabels=card['idLabels'])
+    logging.info(f"[{datetime.now()}]: Card $ handled: {card['id']} : {card['name']}")
 
 
-def archive_cards(trello):
-    """ Archive all cards with due date higher than current date and snooze tag
-    """
-    cards = trello.boards.get_card(
-        TRELLO_BOARD, filter='open', fields='idLabels,name,due')
-    for card in cards:
-        if SNOOZE_LABEL not in card['idLabels']:
-            continue
+def snooze_card(trello, card):
+    # only continue with relevant cards
+    if LABEL_SNOOZE not in card['idLabels'] or not card['due']:
+        return
 
-        if card['due'] is None:
-            continue
+    # skip those already sleeping
+    if card['closed']:
+        return
 
-        current_time = datetime.utcnow()
-        card_due = datetime.strptime(card['due'], '%Y-%m-%dT%H:%M:%S.%fZ')
-        if current_time > card_due:
-            continue
+    # check if time is not here yet
+    current_time = datetime.utcnow()
+    card_due = datetime.strptime(card['due'], '%Y-%m-%dT%H:%M:%S.%fZ')
+    if current_time > card_due:
+        return
 
-        trello.cards.update_closed(card['id'], 'true')
+    card['closed'] = True
 
-        logging.info('[%s]: Card hidden: %s', datetime.now(), card['name'])
-
-
-def unarchive_cards(trello):
-    """ Unarchive all cards with due date smaller than current
-    date and snooze tag. Due date is removed from card.
-    """
-    cards = trello.boards.get_card(
-        TRELLO_BOARD, filter='closed', fields='idLabels,name,due')
-    for card in cards:
-        if SNOOZE_LABEL not in card['idLabels']:
-            continue
-
-        if card['due'] is None:
-            continue
-
-        current_time = datetime.utcnow()
-        card_due = datetime.strptime(card['due'], '%Y-%m-%dT%H:%M:%S.%fZ')
-        if current_time < card_due:
-            continue
-
-        trello.cards.update_due(card['id'], 'null')
-        trello.cards.update_closed(card['id'], 'false')
-
-        logging.info('[%s]: Card restored: %s', datetime.now(), card['name'])
+    trello.cards.update(card['id'], closed='true')
+    logging.info(f"[{datetime.now()}]: Card snoozed: {card['id']} : {card['name']}")
 
 
-if __name__ == "__main__":
+def wake_card(trello, card):
+    # only continue with relevant cards
+    if LABEL_SNOOZE not in card['idLabels'] or not card['due']:
+        return
 
-    logging.basicConfig(
-        filename='./logging.log', filemode='a', level=logging.INFO)
-    logging.info('[%s]: running Trello card snoozer', datetime.now())
+    # check if time has come
+    current_time = datetime.utcnow()
+    card_due = datetime.strptime(card['due'], '%Y-%m-%dT%H:%M:%S.%fZ')
+    if current_time < card_due:
+        return
+
+    card['closed'] = False
+    card['due'] = None
+
+    trello.cards.update(card['id'], closed='false', due='null')
+    logging.info(f"[{datetime.now()}]: Card awaken: {card['id']} : {card['name']}")
+
+
+def acquire_program_lock():
+    queue_lock = None
+    program_lock = None
+
+    script_location = os.path.dirname(os.path.realpath(__file__))
+
+    # first get into the queue
+    try:
+        queue_lock = os.open(os.path.join(script_location, ".queue_lock"), os.O_CREAT)
+        fcntl.flock(queue_lock, fcntl.LOCK_NB | fcntl.LOCK_EX)
+    except OSError:
+        if queue_lock:
+            os.close(queue_lock)
+        return False
+
+    program_lock = os.open(os.path.join(script_location, ".program_lock"), os.O_CREAT)
+    fcntl.flock(program_lock, fcntl.LOCK_EX)
+
+    # now unlock the .queue_lock
+    fcntl.flock(queue_lock, fcntl.LOCK_UN)
+    os.close(queue_lock)
+
+    return True
+
+
+def main():
+
+    logging.basicConfig(filename='/root/logging.log', filemode='a', level=logging.INFO)
+    logging.info(f"[{datetime.now()}]: Acquiring program lock.")
+
+    if not acquire_program_lock():
+        logging.info(f"[{datetime.now()}]: Program lock cannot be acquired.")
+        sys.exit(1)
 
     trello = TrelloApi(TRELLO_APP_KEY, TRELLO_TOKEN)
 
-    handle_dollar_sign(trello)
-    archive_cards(trello)
-    unarchive_cards(trello)
-    unarchive_auto_list_cards(trello)
+    # retrieve all cards on the main board
+    data = trello.boards.get_card(TRELLO_BOARD, filter='all')
+
+    # we are not interested in cards, which are closed
+    # and without any progress labels
+    cards = [c for c in data if not c['closed'] or set(c['idLabels']) & set(PROGRESS_LABELS)]
+
+    logging.info(f"Total board/relevant cards: {len(data)}/{len(cards)}")
+
+    for card in cards:
+
+        # check whether everything is ok with this card
+        ok, reason = integrity_check(card)
+        if not ok:
+            # broken cards need to be returned
+            trello.cards.update(card['id'],
+                due='null',
+                closed='false',
+                name=f"[RESTORED] {card['name']}",
+                desc=f"**This card was restored**\n{reason}\n\n{card['desc']}",
+                idLabels=card['idLabels'] + [LABEL_IMPORTANT])
+            continue
+
+        # handle dollar snooze shortcuts
+        handle_dollar_snoozing(trello, card)
+
+        # snooze cards with date and delay label
+        snooze_card(trello, card)
+
+        # wake me up when time comes
+        wake_card(trello, card)
+
+
+    # schedule cards for tomorrow
+    current_time = datetime.now().time()
+    if time(1,0,0) <= current_time <= time(2,0,0):
+        logging.info(f"[{datetime.now()}]: running tomorrow scheduling")
+
+        for card in cards:
+            # work with relevant cards only
+            if LABEL_TOMORROW not in card['idLabels']:
+                continue
+
+            card['idList'] = LIST_TOMORROW
+            card['idLabels'].remove(LABEL_TOMORROW)
+
+            trello.cards.update(card['id'], idList=card['idList'])
+            # labels cannot be removed with update in some cases (where none would remain)
+            trello.cards.delete_idLabel_idLabel(LABEL_TOMORROW, card['id'])
+            logging.info(f"[{datetime.now()}]: Card scheduled for tomorrow: {card['id']} : {card['name']}")
+
+
+    # last thing: remove Zapier script checking card
+    for card in cards:
+        if card['name'] == "[CHECK] Problem with Trello script":
+            trello.cards.delete(card['id'])
+            logging.info(f"[{datetime.now()}]: Deleted Zapier check card")
+            break
+
+
+if __name__ == "__main__":
+    main()

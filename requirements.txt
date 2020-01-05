@@ -1,1 +1,1 @@
-git+https://github.com/tghw/trello-py.git#egg=trello-py
+trello
