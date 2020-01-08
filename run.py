@@ -1,5 +1,4 @@
 import fcntl
-import json
 import logging
 import re
 import os
@@ -23,6 +22,7 @@ LABEL_IMPORTANT = '...'
 PROGRESS_LABELS = [LABEL_SNOOZE, LABEL_TOMORROW]
 
 LIST_TOMORROW = '...'
+LIST_PROJECTS = '...'
 
 
 def integrity_check(card):
@@ -130,13 +130,13 @@ def main():
     trello = TrelloApi(TRELLO_APP_KEY, TRELLO_TOKEN)
 
     # retrieve all cards on the main board
-    data = trello.boards.get_card(TRELLO_BOARD, filter='all')
+    data = trello.boards.get_card(TRELLO_BOARD, filter='all', checklists='all')
 
     # we are not interested in cards, which are closed
     # and without any progress labels
     cards = [c for c in data if not c['closed'] or set(c['idLabels']) & set(PROGRESS_LABELS)]
 
-    logging.info(f"Total board/relevant cards: {len(data)}/{len(cards)}")
+    logging.info(f"Total board/open cards: {len(data)}/{len(cards)}")
 
     for card in cards:
 
@@ -164,7 +164,7 @@ def main():
 
     # schedule cards for tomorrow
     current_time = datetime.now().time()
-    if time(1,0,0) <= current_time <= time(2,0,0):
+    if time(1, 0, 0) <= current_time <= time(2, 0, 0):
         logging.info(f"[{datetime.now()}]: running tomorrow scheduling")
 
         for card in cards:
@@ -179,6 +179,81 @@ def main():
             # labels cannot be removed with update in some cases (where none would remain)
             trello.cards.delete_idLabel_idLabel(LABEL_TOMORROW, card['id'])
             logging.info(f"[{datetime.now()}]: Card scheduled for tomorrow: {card['id']} : {card['name']}")
+
+
+    # handle projects and project related labels
+    cards = [c for c in data if any(a['color'] is None for a in c['labels'])]
+
+    projects = {}
+    project_cards = []
+
+    # at first go through individual cards (not the project one)
+    for card in cards:
+
+        if card['idList'] == LIST_PROJECTS:
+            # save project related cards for later quicker use
+            project_cards.append(card)
+            continue
+
+        for label in card['labels']:
+
+            if label['color'] is not None:
+                continue
+
+            if label['id'] not in projects:
+                projects[label['id']] = []
+
+            projects[label['id']].append((card['name'], card['closed']))
+
+
+    # now handle project checklists
+    for card in project_cards:
+
+        for label in card['labels']:
+            # continue only with colorless labels with the project name
+            if label['name'] != card['name'] or label['color'] is not None:
+                continue
+
+            if label['id'] not in projects:
+                # this label is not present on any other card
+                # and thus the checklist would be empty
+                continue
+
+            # get project related checklist
+            checklist = next((c for c in card['checklists'] if c['name'] == f"@{card['name']}"), None)
+            if checklist is None:
+                # create new checklist if one does not exist yet
+                checklist = trello.cards.new_checklist(card['id'], name=f"@{card['name']}")
+
+            for item in checklist['checkItems']:
+                for desc, closed in projects[label['id']]:
+                    if desc != item['name']:
+                        continue
+
+                    if closed and item['state'] != 'complete':
+                        # change status to complete
+                        trello.cards.update_checkItem_idCheckItem(item['id'], card['id'], state="complete")
+
+                    if not closed and item['state'] != 'incomplete':
+                        # change status to incomplete
+                        trello.cards.update_checkItem_idCheckItem(item['id'], card['id'], state="incomplete")
+
+                    # remove this from projects
+                    projects[label['id']].remove((desc, closed))
+                    break
+                else:
+                    trello.checklists.delete_checkItem_idCheckItem(item['id'], checklist['id'])
+
+            for desc, closed in projects[label['id']]:
+                trello.checklists.new_checkItem(checklist['id'], desc, checked='true' if closed else 'false')
+
+            break
+
+        else:
+            # in case we did not found any label, remove project checklist
+            checklist = next((c for c in card['checklists'] if c['name'] == f"@{card['name']}"), None)
+            if checklist is not None:
+                trello.checklists.delete(checklist['id'])
 
 
     # last thing: remove Zapier script checking card
