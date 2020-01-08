@@ -1,3 +1,5 @@
+#!/usr/bin/python3.7
+
 import fcntl
 import logging
 import re
@@ -10,24 +12,15 @@ from datetime import timedelta
 
 from trello import TrelloApi
 
-
-TRELLO_APP_KEY = '...'
-TRELLO_TOKEN = '...'
-TRELLO_BOARD = '...'
-
-LABEL_TOMORROW = '...'
-LABEL_SNOOZE = '...'
-LABEL_IMPORTANT = '...'
-
-PROGRESS_LABELS = [LABEL_SNOOZE, LABEL_TOMORROW]
-
-LIST_TOMORROW = '...'
-LIST_PROJECTS = '...'
+from config import TRELLO
+from config import LIST
+from config import LABEL
+from config import PROGRESS_LABELS
 
 
 def integrity_check(card):
     # check that delayed (archived) cards do have a due date
-    if card['closed'] and LABEL_SNOOZE in card['idLabels'] and not card['due']:
+    if card['closed'] and LABEL.SNOOZE in card['idLabels'] and not card['due']:
         return False, "Card does have delay label without any date set"
 
     return True, None
@@ -48,7 +41,7 @@ def handle_dollar_snoozing(trello, card):
 
     card['name'] = re.sub(pattern, "", card['name'])
     card['due'] = datetime.strftime(delay_time, '%Y-%m-%dT%H:%M:%S.%fZ')
-    card['idLabels'] = card['idLabels'] + [LABEL_SNOOZE]
+    card['idLabels'] = card['idLabels'] + [LABEL.SNOOZE]
 
     trello.cards.update(card['id'], name=card['name'], due=card['due'], idLabels=card['idLabels'])
     logging.info(f"[{datetime.now()}]: Card $ handled: {card['id']} : {card['name']}")
@@ -56,7 +49,7 @@ def handle_dollar_snoozing(trello, card):
 
 def snooze_card(trello, card):
     # only continue with relevant cards
-    if LABEL_SNOOZE not in card['idLabels'] or not card['due']:
+    if LABEL.SNOOZE not in card['idLabels'] or not card['due']:
         return
 
     # skip those already sleeping
@@ -77,7 +70,7 @@ def snooze_card(trello, card):
 
 def wake_card(trello, card):
     # only continue with relevant cards
-    if LABEL_SNOOZE not in card['idLabels'] or not card['due']:
+    if LABEL.SNOOZE not in card['idLabels'] or not card['due']:
         return
 
     # check if time has come
@@ -127,14 +120,14 @@ def main():
         logging.info(f"[{datetime.now()}]: Program lock cannot be acquired.")
         sys.exit(1)
 
-    trello = TrelloApi(TRELLO_APP_KEY, TRELLO_TOKEN)
+    trello = TrelloApi(TRELLO.APP_KEY, TRELLO.TOKEN)
 
     # retrieve all cards on the main board
-    data = trello.boards.get_card(TRELLO_BOARD, filter='all', checklists='all')
+    data = trello.boards.get_card(TRELLO.BOARD, filter='all', checklists='all')
 
     # we are not interested in cards, which are closed
     # and without any progress labels
-    cards = [c for c in data if not c['closed'] or set(c['idLabels']) & set(PROGRESS_LABELS)]
+    cards = [c for c in data if not c['closed'] or set(c['idLabels']) & PROGRESS_LABELS]
 
     logging.info(f"Total board/open cards: {len(data)}/{len(cards)}")
 
@@ -149,7 +142,7 @@ def main():
                 closed='false',
                 name=f"[RESTORED] {card['name']}",
                 desc=f"**This card was restored**\n{reason}\n\n{card['desc']}",
-                idLabels=card['idLabels'] + [LABEL_IMPORTANT])
+                idLabels=card['idLabels'] + [LABEL.IMPORTANT])
             continue
 
         # handle dollar snooze shortcuts
@@ -169,15 +162,15 @@ def main():
 
         for card in cards:
             # work with relevant cards only
-            if LABEL_TOMORROW not in card['idLabels']:
+            if LABEL.TOMORROW not in card['idLabels']:
                 continue
 
-            card['idList'] = LIST_TOMORROW
-            card['idLabels'].remove(LABEL_TOMORROW)
+            card['idList'] = LIST.TOMORROW
+            card['idLabels'].remove(LABEL.TOMORROW)
 
             trello.cards.update(card['id'], idList=card['idList'])
             # labels cannot be removed with update in some cases (where none would remain)
-            trello.cards.delete_idLabel_idLabel(LABEL_TOMORROW, card['id'])
+            trello.cards.delete_idLabel_idLabel(LABEL.TOMORROW, card['id'])
             logging.info(f"[{datetime.now()}]: Card scheduled for tomorrow: {card['id']} : {card['name']}")
 
 
@@ -190,7 +183,7 @@ def main():
     # at first go through individual cards (not the project one)
     for card in cards:
 
-        if card['idList'] == LIST_PROJECTS:
+        if card['idList'] == LIST.PROJECTS:
             # save project related cards for later quicker use
             project_cards.append(card)
             continue
