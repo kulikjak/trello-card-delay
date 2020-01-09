@@ -18,6 +18,10 @@ from config import LABEL
 from config import PROGRESS_LABELS
 
 
+# correctly determine current location
+script_location = os.path.dirname(os.path.realpath(__file__))
+
+
 def integrity_check(card):
     # check that delayed (archived) cards do have a due date
     if card['closed'] and LABEL.SNOOZE in card['idLabels'] and not card['due']:
@@ -87,10 +91,17 @@ def wake_card(trello, card):
 
 
 def acquire_program_lock():
+    """Acquire lock to run this program.
+
+    This function assures that no more than two instances of this script
+    are running at the same time (one processing and other waiting for
+    the first one to finish)
+    """
+
     queue_lock = None
     program_lock = None
 
-    script_location = os.path.dirname(os.path.realpath(__file__))
+    logging.info(f"[{datetime.now()}]: Acquiring program lock.")
 
     # first get into the queue
     try:
@@ -112,13 +123,14 @@ def acquire_program_lock():
 
 
 def main():
+    # setup logging
+    logfile = os.path.join(script_location, "logging.log")
+    logging.basicConfig(filename=logfile, filemode='a', level=logging.INFO)
 
-    logging.basicConfig(filename='/root/logging.log', filemode='a', level=logging.INFO)
-    logging.info(f"[{datetime.now()}]: Acquiring program lock.")
-
+    # end if other instances are waiting and running
     if not acquire_program_lock():
         logging.info(f"[{datetime.now()}]: Program lock cannot be acquired.")
-        sys.exit(1)
+        sys.exit(100)
 
     trello = TrelloApi(TRELLO.APP_KEY, TRELLO.TOKEN)
 
