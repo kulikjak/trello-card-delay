@@ -1,19 +1,16 @@
 from trello import TrelloApi
 
-TRELLO_APP_KEY = '...'
-TRELLO_TOKEN = '...'
-TRELLO_BOARD = '...'
-
-WEBHOOK_ADDRESS = '...'
+from config import TRELLO
+from config import WEBHOOK
 
 
 def setup_webhook():
-    trello = TrelloApi(TRELLO_APP_KEY, TRELLO_TOKEN)
-    webhooks = trello.tokens.get_webhook(TRELLO_TOKEN)
+    trello = TrelloApi(TRELLO.APP_KEY, TRELLO.TOKEN)
+    webhooks = trello.tokens.get_webhook(TRELLO.TOKEN)
 
     for webhook in webhooks:
         # find webhook hooked to this site
-        if webhook['callbackURL'] == WEBHOOK_ADDRESS:
+        if webhook['callbackURL'] == WEBHOOK.ADDRESS:
             # no need to setup anything if webhook is active
             if webhook['active']:
                 return
@@ -23,7 +20,7 @@ def setup_webhook():
 
     # create new webhook
     print("setting up a new webhook")
-    trello.webhooks.new(WEBHOOK_ADDRESS, TRELLO_BOARD, description="Trello script webhook")
+    trello.webhooks.new(WEBHOOK.ADDRESS, TRELLO.BOARD, description="Trello script webhook")
 
 
 if __name__ == '__main__':

@@ -12,6 +12,9 @@ class LABEL:
     SNOOZE = '...'
     IMPORTANT = '...'
 
+class WEBHOOK:
+    ADDRESS = '...'
+
 PROGRESS_LABELS = set([
     LABEL.SNOOZE,
     LABEL.TOMORROW
