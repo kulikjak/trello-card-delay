@@ -200,6 +200,10 @@ def main():
             project_cards.append(card)
             continue
 
+        if LABEL.SNOOZE in card['idLabels']:
+            # do not consider snoozed cards in any way
+            continue
+
         for label in card['labels']:
 
             if label['color'] is not None:
@@ -267,6 +271,8 @@ def main():
             trello.cards.delete(card['id'])
             logging.info(f"[{datetime.now()}]: Deleted Zapier check card")
             break
+
+    logging.info(f"[{datetime.now()}]: Done")
 
 
 if __name__ == "__main__":
