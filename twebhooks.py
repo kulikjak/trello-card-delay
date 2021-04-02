@@ -30,8 +30,7 @@ def _call_and_check(function, *args, **kwargs):
 
 def create_webhook(callbackURL, idModel, description=None):
     trello = TrelloApi(TRELLO["AppKey"], TRELLO["Token"])
-    _call_and_check(trello.webhooks.new, callbackURL, idModel,
-                    description=description)
+    _call_and_check(trello.webhooks.new, callbackURL, idModel, description=description)
     print("New webhook was created")
 
 
@@ -54,13 +53,13 @@ def auto_setup():
 
     for webhook in webhooks:
         # find webhook hooked to this site
-        if webhook['callbackURL'] == SERVER["Address"]:
+        if webhook["callbackURL"] == SERVER["Address"]:
             # no need to setup anything if webhook is active
-            if webhook['active']:
+            if webhook["active"]:
                 return
 
             print("deleting inactive webhook")
-            trello.webhooks.delete(webhook['id'])
+            trello.webhooks.delete(webhook["id"])
 
     # create new webhook
     print("setting up a new webhook")
@@ -70,7 +69,9 @@ def auto_setup():
 
 def get_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-v", "--verbose", action="store_true",
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
         help="make error messages more verbose")
     subparsers = parser.add_subparsers(dest="action")
 

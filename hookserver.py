@@ -15,13 +15,13 @@ import run
 app = Flask(__name__)
 
 
-@app.route('/')
+@app.route("/")
 def index():
     # just to check that the webserver works
-    return 'Nothing to see here!'
+    return "Nothing to see here!"
 
 
-@app.route('/trellowebhook', methods=['GET', 'POST', 'HEAD'])
+@app.route("/trellowebhook", methods=["GET", "POST", "HEAD"])
 def webhook():
     # respond to HEAD request when new webhook is being created
     if request.method == "HEAD":
@@ -55,7 +55,7 @@ def main():
         # ssl certificates are not available
         ctx = "adhoc"
 
-    app.run(host='0.0.0.0', port=port, ssl_context=ctx)
+    app.run(host="0.0.0.0", port=port, ssl_context=ctx)
 
 
 if __name__ == "__main__":
