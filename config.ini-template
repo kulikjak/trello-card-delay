@@ -9,5 +9,19 @@ Address = https://example.com/trellowebhook
 [TRELLO]
 AppKey =
 Token =
-# Full id of the tracked board
+# full id of the tracked board
 Board =
+
+[LIST]
+# list being checked for the tomorrow label
+Tomorrow =
+# list with all projects
+Projects =
+
+[LABEL]
+# label to schedule card for tomorrow
+Tomorrow =
+# label to snooze card
+Snooze =
+# label to mark card as important
+Important =
