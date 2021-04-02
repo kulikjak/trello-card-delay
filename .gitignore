@@ -2,8 +2,7 @@ __venv__
 __pycache__
 logging.log
 
-.program_lock
-.queue_lock
+.script_lock
 
 # do not commit the real config file
 config.ini
