@@ -1,0 +1,5 @@
+[SERVER]
+Port = 443
+# location of private key and the corresponding certificate
+CertFile = .../fullchain.pem
+PKeyFile = .../privkey.pem
