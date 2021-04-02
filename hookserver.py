@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import io
-import ssl
+import sys
 
 from configparser import ConfigParser
 from contextlib import redirect_stdout, redirect_stderr
@@ -8,6 +8,10 @@ from contextlib import redirect_stdout, redirect_stderr
 from flask import Flask
 from flask import request
 from flask import jsonify
+
+from cheroot.wsgi import Server as WSGIServer
+from cheroot.wsgi import PathInfoDispatcher
+from cheroot.ssl.builtin import BuiltinSSLAdapter
 
 import run
 
@@ -45,17 +49,19 @@ def main():
 
     port = config["SERVER"].getint("Port")
 
+    wsgi_app = PathInfoDispatcher({"/": app})
+    server = WSGIServer(("0.0.0.0", port), wsgi_app)
+
     try:
         cert_file = config["SERVER"]["CertFile"]
         pkey_file = config["SERVER"]["PKeyFile"]
 
-        ctx = ssl.SSLContext()
-        ctx.load_cert_chain(cert_file, pkey_file)
+        server.ssl_adapter = BuiltinSSLAdapter(cert_file, pkey_file)
     except KeyError:
         # ssl certificates are not available
-        ctx = "adhoc"
+        sys.stderr.write("Running without ssl!\n")
 
-    app.run(host="0.0.0.0", port=port, ssl_context=ctx)
+    server.start()
 
 
 if __name__ == "__main__":
