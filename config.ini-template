@@ -3,3 +3,11 @@ Port = 443
 # location of private key and the corresponding certificate
 CertFile = .../fullchain.pem
 PKeyFile = .../privkey.pem
+# server address
+Address = https://example.com/trellowebhook
+
+[TRELLO]
+AppKey =
+Token =
+# Full id of the tracked board
+Board =
