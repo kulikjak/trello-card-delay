@@ -1,0 +1,10 @@
+[Unit]
+Description=Trello script webserver
+
+[Service]
+WorkingDirectory=/DIRPATH/
+Environment="PATH=/DIRPATH/__venv__/bin"
+ExecStart=/DIRPATH/__venv__/bin/python3 webserver.py
+
+[Install]
+WantedBy=multi-user.target
