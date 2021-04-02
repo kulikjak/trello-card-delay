@@ -6,6 +6,7 @@ import re
 import os
 import sys
 
+from configparser import ConfigParser
 from datetime import time
 from datetime import datetime
 from datetime import timedelta
@@ -104,7 +105,7 @@ def _run_trellohelper():
 
     # we are not interested in cards, which are closed
     # and without any progress labels
-    progress_labels = [LABEL["Snooze"], LABEL["Tomorrow"]]
+    progress_labels = {LABEL["Snooze"], LABEL["Tomorrow"]}
     cards = [c for c in data if not c["closed"] or set(c["idLabels"]) & progress_labels]
 
     logging.info(f"Total board/open cards: {len(data)}/{len(cards)}")
