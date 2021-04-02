@@ -13,7 +13,7 @@ from cheroot.wsgi import Server as WSGIServer
 from cheroot.wsgi import PathInfoDispatcher
 from cheroot.ssl.builtin import BuiltinSSLAdapter
 
-import run
+import trellohelper
 
 
 app = Flask(__name__)
@@ -35,7 +35,7 @@ def webhook():
     # and stdout redirected to variables
     with io.StringIO() as out, io.StringIO() as err:
         with redirect_stdout(out), redirect_stderr(err):
-            returncode = run.main()
+            returncode = trellohelper.run()
 
         return jsonify({
             "stdout": out.getvalue(),

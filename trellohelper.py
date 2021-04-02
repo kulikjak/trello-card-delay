@@ -22,6 +22,9 @@ TRELLO = config["TRELLO"]
 
 # correctly determine current location
 script_location = os.path.dirname(os.path.realpath(__file__))
+# setup logging
+logfile = os.path.join(script_location, "logging.log")
+logging.basicConfig(filename=logfile, filemode="a", level=logging.INFO)
 
 
 def integrity_check(card):
@@ -92,47 +95,7 @@ def wake_card(trello, card):
     logging.info(f"[{datetime.now()}]: Card awaken: {card['id']} : {card['name']}")
 
 
-def acquire_program_lock():
-    """Acquire lock to run this program.
-
-    This function assures that no more than two instances of this script
-    are running at the same time (one processing and other waiting for
-    the first one to finish)
-    """
-
-    queue_lock = None
-    program_lock = None
-
-    logging.info(f"[{datetime.now()}]: Acquiring program lock.")
-
-    # first get into the queue
-    try:
-        queue_lock = os.open(os.path.join(script_location, ".queue_lock"), os.O_CREAT)
-        fcntl.flock(queue_lock, fcntl.LOCK_NB | fcntl.LOCK_EX)
-    except OSError:
-        if queue_lock:
-            os.close(queue_lock)
-        return False
-
-    program_lock = os.open(os.path.join(script_location, ".program_lock"), os.O_CREAT)
-    fcntl.flock(program_lock, fcntl.LOCK_EX)
-
-    # now unlock the .queue_lock
-    fcntl.flock(queue_lock, fcntl.LOCK_UN)
-    os.close(queue_lock)
-
-    return True
-
-
-def main():
-    # setup logging
-    logfile = os.path.join(script_location, "logging.log")
-    logging.basicConfig(filename=logfile, filemode="a", level=logging.INFO)
-
-    # end if other instances are waiting and running
-    if not acquire_program_lock():
-        logging.info(f"[{datetime.now()}]: Program lock cannot be acquired.")
-        sys.exit(100)
+def _run_trellohelper():
 
     trello = TrelloApi(TRELLO["AppKey"], TRELLO["Token"])
 
@@ -290,5 +253,30 @@ def main():
     logging.info(f"[{datetime.now()}]: Done")
 
 
+def run():
+    logging.info(f"[{datetime.now()}]: Acquiring script lock.")
+
+    # acquire lock to run this script. This assures that no more than
+    # one instance of this script is running at the same time.
+    try:
+        script_lock = os.open(os.path.join(script_location, ".script_lock"), os.O_CREAT)
+        fcntl.flock(script_lock, fcntl.LOCK_NB | fcntl.LOCK_EX)
+    except OSError:
+        logging.info(f"[{datetime.now()}]: Script lock cannot be acquired.")
+        if script_lock:
+            os.close(script_lock)
+        return False
+
+    try:
+        _run_trellohelper()
+    except BaseException:
+        # no matter what happened we want to release the lock
+        os.close(script_lock)
+        raise
+
+    os.close(script_lock)
+    return True
+
+
 if __name__ == "__main__":
-    main()
+    sys.exit(not run())
