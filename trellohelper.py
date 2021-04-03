@@ -245,7 +245,7 @@ def _run_trellohelper():
                 trello.checklists.delete(checklist["id"])
 
     # last thing: remove Zapier script checking card
-    for card in cards:
+    for card in data:
         if card["name"] == "[CHECK] Problem with Trello script":
             trello.cards.delete(card["id"])
             logging.info(f"[{datetime.now()}]: Deleted Zapier check card")
